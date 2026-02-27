@@ -2,7 +2,7 @@
 name = "bevy-prototype-parallax"
 version = "0.1.0"
 authors = ["beau trepp <beautrepp@gmail.com>"]
-edition = "2018"
+edition = "2024"
 description = "Parallax scrolling plugin for bevy"
 keywords = ["gamedev", "bevy", "bevy-prototype"]
 readme = "README.md"
@@ -11,7 +11,7 @@ license = "MIT"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bevy = "0.5.0"
+bevy = "0.18.0"
 
 [dev-dependencies]
-rstest = "0.6.4"
+rstest = "0.26.1"
