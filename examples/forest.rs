@@ -42,19 +42,20 @@ fn main() {
 fn setup_parallax(mut commands: Commands, asset_server: Res<AssetServer>) {
     // Helper that loads an asset as a parallax layer
     // layers should have different speeds to achieve the effect
-    let layer = |path: &'static str, speed: f32| -> LayerBundle {
+    // z controls front-to-back ordering (higher z = more in front)
+    let layer = |path: &'static str, speed: f32, z: f32| -> LayerBundle {
         let image = asset_server.load(path);
         LayerBundle {
             layer: Layer {
                 speed,
-                ..Default::default()
+                image,
             },
-            sprite: Sprite::from_image(image),
             transform: Transform {
                 scale: Vec3::new(4.0, 4.5, 1.0),
-                translation: Vec3::new(0.0, 0.0, 0.0),
+                translation: Vec3::new(0.0, 0.0, z),
                 ..Default::default()
             },
+            ..Default::default()
         }
     };
 
@@ -64,10 +65,10 @@ fn setup_parallax(mut commands: Commands, asset_server: Res<AssetServer>) {
         .with_children(|cb| {
             // Spawn the layers.
             // We can have as many as we like
-            cb.spawn(layer("parallax-forest-back-trees.png", 0.0));
-            cb.spawn(layer("parallax-forest-lights.png", 0.05));
-            cb.spawn(layer("parallax-forest-middle-trees.png", 0.1));
-            cb.spawn(layer("parallax-forest-front-trees.png", 0.2));
+            cb.spawn(layer("parallax-forest-back-trees.png", 0.0, 0.0));
+            cb.spawn(layer("parallax-forest-lights.png", 0.05, 0.1));
+            cb.spawn(layer("parallax-forest-middle-trees.png", 0.1, 0.2));
+            cb.spawn(layer("parallax-forest-front-trees.png", 0.2, 0.3));
         });
 }
 
