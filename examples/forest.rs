@@ -1,39 +1,38 @@
-use std::f32::consts::PI;
-
 use bevy::prelude::*;
 use bevy_prototype_parallax::{Layer, LayerBundle, ParallaxPlugin, WindowSize};
+use bevy_spritesheet_animation::{
+    plugin::SpritesheetAnimationPlugin,
+    prelude::{Animation, AnimationDuration, Spritesheet, SpritesheetAnimation},
+};
+
+const PLAYER_SPEED: f32 = 1600.0;
 
 #[derive(Component)]
 struct Player {
-    pub run_image: Handle<Image>,
-    pub run_layout: Handle<TextureAtlasLayout>,
-    pub idle_image: Handle<Image>,
-    pub idle_layout: Handle<TextureAtlasLayout>,
+    run_image: Handle<Image>,
+    run_layout: Handle<Animation>,
+    idle_image: Handle<Image>,
+    idle_layout: Handle<Animation>,
 }
-
-#[derive(Component, Deref, DerefMut)]
-struct AnimationTimer(Timer);
 
 fn main() {
     App::new()
-        .add_plugins(DefaultPlugins.set(WindowPlugin {
-            primary_window: Some(Window {
-                title: "Forrest".to_string(),
-                resolution: bevy::window::WindowResolution::new(1280, 720),
-                resizable: false,
-                ..default()
-            }),
-            ..default()
-        }))
-        .add_systems(Startup, (setup_parallax, setup_character))
-        .add_systems(
-            Update,
-            (
-                move_character_system,
-                follow_player_camera,
-                animate_sprite_system,
-            ),
+        .add_plugins(
+            DefaultPlugins
+                .set(WindowPlugin {
+                    primary_window: Some(Window {
+                        title: "Forest".to_string(),
+                        resolution: bevy::window::WindowResolution::new(1280, 720),
+                        resizable: false,
+                        ..default()
+                    }),
+                    ..default()
+                })
+                .set(ImagePlugin::default_nearest()),
         )
+        .add_systems(Startup, (setup_parallax, setup_character))
+        .add_systems(Update, (move_character_system, follow_player_camera))
+        .add_plugins(SpritesheetAnimationPlugin)
         .add_plugins(ParallaxPlugin)
         .run();
 }
@@ -46,10 +45,7 @@ fn setup_parallax(mut commands: Commands, asset_server: Res<AssetServer>) {
     let layer = |path: &'static str, speed: f32, z: f32| -> LayerBundle {
         let image = asset_server.load(path);
         LayerBundle {
-            layer: Layer {
-                speed,
-                image,
-            },
+            layer: Layer { speed, image },
             transform: Transform {
                 scale: Vec3::new(4.0, 4.5, 1.0),
                 translation: Vec3::new(0.0, 0.0, z),
@@ -76,40 +72,41 @@ fn setup_parallax(mut commands: Commands, asset_server: Res<AssetServer>) {
 fn setup_character(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
+    mut animations: ResMut<Assets<Animation>>,
     mut texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
 ) {
-    let run_image = asset_server.load("Run.png");
-    let run_layout = texture_atlas_layouts.add(TextureAtlasLayout::from_grid(
-        UVec2::new(24, 24),
-        8,
-        1,
-        None,
-        None,
-    ));
+    let run_image: Handle<Image> = asset_server.load("Run.png");
+    let run_spritesheet = Spritesheet::new(&run_image, 8, 1);
+    let run_animation = run_spritesheet
+        .create_animation()
+        .add_row(0)
+        .set_duration(AnimationDuration::PerFrame(100))
+        .build();
 
-    let idle_image = asset_server.load("Idle.png");
-    let idle_layout = texture_atlas_layouts.add(TextureAtlasLayout::from_grid(
-        UVec2::new(24, 24),
-        8,
-        1,
-        None,
-        None,
-    ));
+    let run_layout = animations.add(run_animation);
+
+    let idle_image: Handle<Image> = asset_server.load("Idle.png");
+    let spritesheet = Spritesheet::new(&idle_image, 8, 1);
+    let idle_animation = spritesheet
+        .create_animation()
+        .add_row(0)
+        .set_duration(AnimationDuration::PerFrame(100))
+        .build();
+
+    let idle_layout = animations.add(idle_animation);
+
+    let sprite = spritesheet
+        .with_size_hint(1200, 150)
+        .sprite(&mut texture_atlas_layouts);
 
     commands.spawn((
-        Sprite::from_atlas_image(
-            idle_image.clone(),
-            TextureAtlas {
-                layout: idle_layout.clone(),
-                index: 0,
-            },
-        ),
+        sprite,
+        SpritesheetAnimation::new(idle_layout.clone()),
         Transform {
-            scale: Vec3::new(25.0, 25.0, 1.0),
+            scale: Vec3::new(5.0, 5.0, 1.0),
             translation: Vec3::new(0.0, -220.0, 1.0),
             ..Default::default()
         },
-        AnimationTimer(Timer::from_seconds(0.1, TimerMode::Repeating)),
         Player {
             run_image,
             run_layout,
@@ -119,49 +116,38 @@ fn setup_character(
     ));
 }
 
-/// From bevy examples, will animate the sprites in an atlas
-fn animate_sprite_system(
-    texture_atlas_layouts: Res<Assets<TextureAtlasLayout>>,
-    time: Res<Time>,
-    mut query: Query<(&mut AnimationTimer, &mut Sprite)>,
-) {
-    for (mut timer, mut sprite) in query.iter_mut() {
-        timer.tick(time.delta());
-        if timer.just_finished() {
-            if let Some(atlas) = &mut sprite.texture_atlas {
-                if let Some(layout) = texture_atlas_layouts.get(&atlas.layout) {
-                    atlas.index = (atlas.index + 1) % layout.len();
-                }
-            }
-        }
-    }
-}
-
 /// Moves the character and sets the appropriate atlas for animation
 fn move_character_system(
+    time: Res<Time>,
     keyboard_input: Res<ButtonInput<KeyCode>>,
-    mut query: Query<(&Player, &mut Transform, &mut Sprite)>,
+    query: Single<(
+        &Player,
+        &mut Sprite,
+        &mut SpritesheetAnimation,
+        &mut Transform,
+    )>,
 ) {
-    for (player, mut transform, mut sprite) in query.iter_mut() {
+    let (player, mut sprite, mut animation, mut transform) = query.into_inner();
+
+    if keyboard_input.pressed(KeyCode::KeyA) || keyboard_input.pressed(KeyCode::KeyD) {
+        if animation.animation != player.run_layout {
+            animation.switch(player.run_layout.clone());
+            sprite.image = player.run_image.clone();
+        }
+
+        let translation = PLAYER_SPEED * time.delta_secs();
+
         if keyboard_input.pressed(KeyCode::KeyA) {
-            transform.translation.x -= 5.0;
-            transform.rotation = Quat::from_rotation_y(PI);
-            sprite.image = player.run_image.clone();
-            if let Some(atlas) = &mut sprite.texture_atlas {
-                atlas.layout = player.run_layout.clone();
-            }
-        } else if keyboard_input.pressed(KeyCode::KeyD) {
-            transform.translation.x += 5.0;
-            transform.rotation = Quat::from_rotation_y(0.0);
-            sprite.image = player.run_image.clone();
-            if let Some(atlas) = &mut sprite.texture_atlas {
-                atlas.layout = player.run_layout.clone();
-            }
+            transform.translation.x -= translation;
+            sprite.flip_x = true;
         } else {
+            transform.translation.x += translation;
+            sprite.flip_x = false;
+        }
+    } else {
+        if animation.animation != player.idle_layout {
+            animation.switch(player.idle_layout.clone());
             sprite.image = player.idle_image.clone();
-            if let Some(atlas) = &mut sprite.texture_atlas {
-                atlas.layout = player.idle_layout.clone();
-            }
         }
     }
 }
